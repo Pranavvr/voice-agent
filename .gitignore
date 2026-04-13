@@ -37,3 +37,10 @@ logs/
 # Database
 *.db
 *.sqlite3
+postgres_data/
+
+# Javascript / React
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.eslintcache

@@ -126,3 +126,7 @@ webencodings==0.5.1
 websocket-client==1.9.0
 websockets==16.0
 widgetsnbextension==4.0.15
+pytest
+httpx
+ruff
+pytest-asyncio
