@@ -150,7 +150,7 @@ async def websocket_relay(client_ws: WebSocket):
                         # Forward to frontend
                         try:
                             await client_ws.send_text(message)
-                        except:
+                        except Exception:
                             break
                 except Exception as e:
                     print(f"Downstream closed: {e}")
