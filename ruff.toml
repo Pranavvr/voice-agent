@@ -1,0 +1,11 @@
+exclude = [
+    "notebooks/",
+    ".venv/",
+    "node_modules/",
+]
+
+line-length = 88
+
+[lint]
+select = ["E", "F"]
+ignore = ["E501"]
