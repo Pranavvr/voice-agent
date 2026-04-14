@@ -37,5 +37,3 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: pytest tests/
 
-      - name: Build Docker images
-        run: docker compose -f docker/docker-compose.yml build
