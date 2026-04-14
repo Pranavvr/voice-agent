@@ -2,11 +2,11 @@ import os
 import json
 import asyncio
 import websockets
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from app.database import engine, Base, AsyncSessionLocal
-from app import models, crud
+from app import crud
 from app.config import SYSTEM_PROMPT, TOOLS_CONFIG
 
 load_dotenv(dotenv_path="../.env") # Load the .env from the root folder
@@ -150,7 +150,7 @@ async def websocket_relay(client_ws: WebSocket):
                         # Forward to frontend
                         try:
                             await client_ws.send_text(message)
-                        except:
+                        except Exception:
                             break
                 except Exception as e:
                     print(f"Downstream closed: {e}")
