@@ -37,3 +37,8 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: pytest tests/
 
+      - name: Build Backend Docker image
+        run: docker build -f docker/backend.Dockerfile -t voice-agent-api .
+
+      - name: Build Frontend Docker image
+        run: docker build -f docker/frontend.Dockerfile -t voice-agent-web frontend/

@@ -31,8 +31,8 @@ services:
 
   api:
     build:
-      context: ../backend
-      dockerfile: ../docker/backend.Dockerfile
+      context: ..
+      dockerfile: docker/backend.Dockerfile
     container_name: voice_agent_api
     depends_on:
       db:
