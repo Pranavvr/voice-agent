@@ -11,7 +11,7 @@ const VoiceAgent = () => {
     disconnect, 
     startRecording, 
     stopRecording 
-  } = useVoiceAgent();
+  } = useVoiceAgent('user_p1', 'Pranav');
 
   const handleToggleConnection = () => {
     if (isConnected) {
