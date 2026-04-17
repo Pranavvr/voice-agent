@@ -11,6 +11,7 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
   const audioContextRef = useRef(null);
   const processorRef = useRef(null);
   const sourceRef = useRef(null);
+  const nextPlaybackTimeRef = useRef(0);
 
   const connect = useCallback(() => {
     const ws = new WebSocket(`${WS_URL}?user_id=${userId}&name=${userName}`);
@@ -23,16 +24,23 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
       
+      if (data.type === 'response.created') {
+        setTranscript('');
+      }
+
       if (data.type === 'response.audio_transcript.delta') {
-        setTranscript(prev => prev + data.delta);
+        // Sync text appearance with the audio playback queue
+        let delay = 0;
+        if (audioContextRef.current) {
+           delay = Math.max(0, nextPlaybackTimeRef.current - audioContextRef.current.currentTime);
+        }
+        setTimeout(() => {
+          setTranscript(prev => prev + data.delta);
+        }, delay * 1000);
       }
       
       if (data.type === 'response.audio.delta') {
         playAudioDelta(data.delta);
-      }
-
-      if (data.type === 'response.done') {
-        setTranscript(''); // Clear transcript for next turn if needed
       }
     };
 
@@ -48,8 +56,14 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
   const playAudioDelta = (base64Audio) => {
     if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        nextPlaybackTimeRef.current = audioContextRef.current.currentTime;
     }
     
+    // Resume context if suspended (browser behavior)
+    if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+    }
+
     const binary = atob(base64Audio);
     const len = binary.length;
     const bytes = new Int16Array(len / 2);
@@ -68,7 +82,13 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
     const source = audioContextRef.current.createBufferSource();
     source.buffer = buffer;
     source.connect(audioContextRef.current.destination);
-    source.start();
+
+    // Schedule playback
+    const startTime = Math.max(nextPlaybackTimeRef.current, audioContextRef.current.currentTime);
+    source.start(startTime);
+    
+    // Update next playback time (duration = length / sampleRate)
+    nextPlaybackTimeRef.current = startTime + buffer.duration;
   };
 
   const startRecording = async () => {

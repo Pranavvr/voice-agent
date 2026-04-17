@@ -72,10 +72,13 @@ async def websocket_relay(client_ws: WebSocket):
     try:
         async with websockets.connect(WS_URL, additional_headers=headers) as openai_ws:
             print("OpenAI connection established")
+            # Personalize instructions with the user's name
+            instructions = f"{SYSTEM_PROMPT}\nIn this session, you are talking to {user_name}."
+            
             await openai_ws.send(json.dumps({
                 "type": "session.update",
                 "session": {
-                    "instructions": SYSTEM_PROMPT,
+                    "instructions": instructions,
                     "modalities": ["text", "audio"],
                     "voice": "alloy",
                     "tools": TOOLS_CONFIG,
