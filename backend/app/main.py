@@ -76,7 +76,7 @@ async def websocket_relay(client_ws: WebSocket):
         print(f"User verification failed: {e}")
     
     try:
-        async with websockets.connect(WS_URL, additional_headers=headers) as openai_ws:
+        async with websockets.connect(WS_URL, additional_headers=headers, ping_interval=None) as openai_ws:
             print("OpenAI connection established")
             # Personalize instructions with the user's name
             instructions = f"{SYSTEM_PROMPT}\nIn this session, you are talking to {user_name}."
