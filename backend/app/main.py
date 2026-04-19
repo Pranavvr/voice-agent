@@ -5,6 +5,7 @@ import websockets
 from fastapi import FastAPI, WebSocket
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+from tavily import AsyncTavilyClient
 from app.database import engine, Base, AsyncSessionLocal
 from app import crud
 from app.config import SYSTEM_PROMPT, TOOLS_CONFIG
@@ -12,6 +13,7 @@ from app.config import SYSTEM_PROMPT, TOOLS_CONFIG
 load_dotenv(dotenv_path="../.env") # Load the .env from the root folder
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 WS_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
 
 # --- REAL TOOL DEFINITIONS ---
@@ -25,9 +27,13 @@ async def fetch_user_history(user_id: str):
         formatted = "\n".join([f"{m.role}: {m.content}" for m in history])
         return f"Recent history for {user_id}:\n{formatted}"
 
-def web_search(query: str):
-    """Fallback mock search result (Tavily integration coming later)."""
-    return f"Search results for {query}: LangGraph is a powerful framework, but Direct WebSocket is faster for voice."
+async def web_search(query: str):
+    client = AsyncTavilyClient(api_key=TAVILY_API_KEY)
+    response = await client.search(query, max_results=3)
+    results = response.get("results", [])
+    if not results:
+        return f"No results found for: {query}"
+    return "\n\n".join([f"{r['title']}\n{r['content']}" for r in results])
 
 # --- FASTAPI LIFECYCLE ---
 @asynccontextmanager
@@ -138,7 +144,7 @@ async def websocket_relay(client_ws: WebSocket):
                                     if func_name == "get_user_history":
                                         result = await fetch_user_history(args.get("user_id", user_id))
                                     elif func_name == "web_search":
-                                        result = web_search(args.get("query", ""))
+                                        result = await web_search(args.get("query", ""))
                                     
                                     await openai_ws.send(json.dumps({
                                         "type": "conversation.item.create",
