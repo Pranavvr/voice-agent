@@ -3,15 +3,18 @@ import { useVoiceAgent } from '../hooks/useVoiceAgent';
 import AudioVisualizer from './AudioVisualizer';
 
 const VoiceAgent = () => {
-  const { 
-    isConnected, 
-    isRecording, 
-    transcript, 
-    connect, 
-    disconnect, 
-    startRecording, 
-    stopRecording 
-  } = useVoiceAgent('user_p1', 'Pranav');
+  const [userName, setUserName] = useState('');
+  const userId = userName ? `user_${userName.toLowerCase().replace(/\s+/g, '_')}` : 'guest';
+
+  const {
+    isConnected,
+    isRecording,
+    transcript,
+    connect,
+    disconnect,
+    startRecording,
+    stopRecording
+  } = useVoiceAgent(userId, userName || 'User');
 
   const handleToggleConnection = () => {
     if (isConnected) {
@@ -59,8 +62,18 @@ const VoiceAgent = () => {
         </div>
 
         {/* Footer / Controls */}
-        <div className="w-full p-8 bg-white/5 flex gap-4 justify-center">
-          <button 
+        <div className="w-full p-8 bg-white/5 flex flex-col items-center gap-4">
+          {!isConnected && (
+            <input
+              type="text"
+              placeholder="Enter your name"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              className="bg-zinc-800 text-white text-sm rounded-lg px-4 py-2 outline-none border border-white/10 focus:border-violet-500 w-56 text-center"
+            />
+          )}
+          <div className="flex gap-4">
+          <button
             onClick={handleToggleConnection}
             className={`btn-primary ${isConnected ? 'bg-zinc-800' : ''}`}
           >
@@ -74,6 +87,7 @@ const VoiceAgent = () => {
           >
             {isRecording ? 'Stop Recording' : 'Start Mic'}
           </button>
+          </div>
         </div>
       </div>
       
