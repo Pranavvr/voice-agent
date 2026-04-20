@@ -137,6 +137,11 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
     if (wsRef.current) {
       wsRef.current.close();
     }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+      nextPlaybackTimeRef.current = 0;
+    }
   };
 
   return { isConnected, isRecording, transcript, connect, disconnect, startRecording, stopRecording };
