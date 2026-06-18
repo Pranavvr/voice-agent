@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = 'ws://localhost:8000/ws/chat';
+const isProduction = window.location.protocol === 'https:';
+const WS_URL = isProduction
+  ? `wss://${window.location.host}/ws/chat`
+  : 'ws://localhost:8000/ws/chat';
 
 export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
   const [isConnected, setIsConnected] = useState(false);

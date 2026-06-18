@@ -1,0 +1,11 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored — never commit real secrets.
+
+openai_api_key = "sk-..."
+tavily_api_key = "tvly-..."
+db_password    = "change-me-to-a-strong-password"
+
+# Optional overrides (defaults are in variables.tf):
+# aws_region = "us-east-1"
+# db_username = "postgres"
+# db_name     = "voice_agent_db"
