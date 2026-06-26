@@ -31,7 +31,7 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
         setTranscript('');
       }
 
-      if (data.type === 'response.audio_transcript.delta') {
+      if (data.type === 'response.output_audio_transcript.delta') {
         // Sync text appearance with the audio playback queue
         let delay = 0;
         if (audioContextRef.current) {
@@ -42,7 +42,7 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
         }, delay * 1000);
       }
       
-      if (data.type === 'response.audio.delta') {
+      if (data.type === 'response.output_audio.delta') {
         playAudioDelta(data.delta);
       }
     };

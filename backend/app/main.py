@@ -56,8 +56,7 @@ async def websocket_relay(client_ws: WebSocket):
     print("Client connected")
     
     headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "OpenAI-Beta": "realtime=v1"
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     
     # Grab user info from query params (e.g., ws://.../ws/chat?user_id=p_1&name=Pranav)
@@ -84,12 +83,22 @@ async def websocket_relay(client_ws: WebSocket):
             await openai_ws.send(json.dumps({
                 "type": "session.update",
                 "session": {
+                    "type": "realtime",
                     "instructions": instructions,
-                    "modalities": ["text", "audio"],
-                    "voice": "alloy",
+                    "output_modalities": ["audio"],
+                    "audio": {
+                        "input": {
+                            "format": {"type": "audio/pcm", "rate": 24000},
+                            "turn_detection": {"type": "server_vad"},
+                            "transcription": {"model": "whisper-1"}  # server-side transcription
+                        },
+                        "output": {
+                            "format": {"type": "audio/pcm", "rate": 24000},
+                            "voice": "alloy"
+                        }
+                    },
                     "tools": TOOLS_CONFIG,
-                    "tool_choice": "auto",
-                    "input_audio_transcription": {"model": "whisper-1"} # Enable server-side transcription
+                    "tool_choice": "auto"
                 }
             }))
             await openai_ws.send(json.dumps({"type": "response.create"}))
@@ -110,7 +119,7 @@ async def websocket_relay(client_ws: WebSocket):
                         event = json.loads(message)
                         
                         # 1. Log AI Transcript Deltas
-                        if event.get("type") == "response.audio_transcript.delta":
+                        if event.get("type") == "response.output_audio_transcript.delta":
                             delta = event.get("delta", "")
                             current_assistant_transcript += delta
                             # print(f"DEBUG Delta: {delta}") # Too noisy, skip
