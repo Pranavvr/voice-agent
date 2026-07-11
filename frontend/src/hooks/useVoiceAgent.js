@@ -15,6 +15,7 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
   const processorRef = useRef(null);
   const sourceRef = useRef(null);
   const nextPlaybackTimeRef = useRef(0);
+  const scheduledSourcesRef = useRef([]); // audio chunks queued for playback (for barge-in)
 
   const connect = useCallback(() => {
     const ws = new WebSocket(`${WS_URL}?user_id=${userId}&name=${userName}`);
@@ -29,6 +30,11 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
       
       if (data.type === 'response.created') {
         setTranscript('');
+      }
+
+      // Barge-in: the moment the user starts speaking, cut off the bot's queued audio
+      if (data.type === 'input_audio_buffer.speech_started') {
+        clearScheduledAudio();
       }
 
       if (data.type === 'response.output_audio_transcript.delta') {
@@ -86,12 +92,29 @@ export const useVoiceAgent = (userId = 'user_123', userName = 'Pranav') => {
     source.buffer = buffer;
     source.connect(audioContextRef.current.destination);
 
+    // Track this chunk so barge-in can stop it; drop it from the list once it finishes
+    scheduledSourcesRef.current.push(source);
+    source.onended = () => {
+      scheduledSourcesRef.current = scheduledSourcesRef.current.filter(s => s !== source);
+    };
+
     // Schedule playback
     const startTime = Math.max(nextPlaybackTimeRef.current, audioContextRef.current.currentTime);
     source.start(startTime);
-    
+
     // Update next playback time (duration = length / sampleRate)
     nextPlaybackTimeRef.current = startTime + buffer.duration;
+  };
+
+  // Barge-in: stop every queued/playing audio chunk and reset the playback timeline to "now"
+  const clearScheduledAudio = () => {
+    scheduledSourcesRef.current.forEach(source => {
+      try { source.onended = null; source.stop(); } catch (e) { /* already stopped */ }
+    });
+    scheduledSourcesRef.current = [];
+    if (audioContextRef.current) {
+      nextPlaybackTimeRef.current = audioContextRef.current.currentTime;
+    }
   };
 
   const startRecording = async () => {
