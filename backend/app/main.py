@@ -118,13 +118,9 @@ async def websocket_relay(client_ws: WebSocket):
                         message = await openai_ws.recv()
                         event = json.loads(message)
 
-                        # --- TEMP DIAGNOSTICS: log OpenAI errors + non-delta event types ---
-                        _etype = event.get("type", "")
-                        if _etype == "error":
+                        # Surface OpenAI error events; they are otherwise silent
+                        if event.get("type") == "error":
                             print(f"OpenAI ERROR event: {json.dumps(event)}")
-                        elif "delta" not in _etype:
-                            print(f"OpenAI event: {_etype}")
-                        # ------------------------------------------------------------------
 
                         # 1. Log AI Transcript Deltas
                         if event.get("type") == "response.output_audio_transcript.delta":
