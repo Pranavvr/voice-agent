@@ -55,3 +55,6 @@ crash.log
 crash.*.log
 override.tf
 override.tf.json
+
+# Claude Code (local overrides only; .claude/settings.json is shared)
+.claude/settings.local.json
