@@ -40,10 +40,13 @@ and the backend never gets a say — a system prompt would then be the only thin
 keeping the agent on topic. The session sets it `false`, which inserts steps
 3–5. Prompt-based refusal alone is explicitly **not** sufficient here.
 
-`interrupt_response` is `false` for the same reason, which means OpenAI no
-longer cancels in-flight responses on our behalf. The relay sends
-`response.cancel` itself on `input_audio_buffer.speech_started`, so barge-in is
-now owned on both sides: server cancels generation, client clears queued audio.
+`interrupt_response` is deliberately left at its default (`true`) — only
+`create_response` needs to change for the gate. Barge-in then has two halves
+that are both required: OpenAI cancels generation server-side, and the client's
+`clearScheduledAudio()` drops audio it has **already** queued. The model
+generates faster than real time, so seconds of speech can be scheduled in the
+`AudioContext` before the user interrupts; cancelling on the server does nothing
+about those.
 
 The gate fails **open** (`guard.FAIL_OPEN`): if the classifier times out or
 errors, the turn is allowed through. A gate outage that refuses everything

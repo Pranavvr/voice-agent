@@ -56,7 +56,6 @@ async def websocket_relay(client_ws: WebSocket):
 
     current_assistant_transcript = ""
     recent_turns: deque[tuple[str, str]] = deque(maxlen=CONTEXT_WINDOW)
-    response_active = False
 
     print(f"Connection request: {user_name} ({user_id})")
 
@@ -95,7 +94,11 @@ async def websocket_relay(client_ws: WebSocket):
                                         # Left at the default, OpenAI would reply
                                         # before any scope policy could run.
                                         "create_response": False,
-                                        "interrupt_response": False,
+                                        # interrupt_response stays at its default
+                                        # (true): OpenAI cancels the in-flight
+                                        # response when the user starts speaking.
+                                        # The client separately drops audio it has
+                                        # already queued -- see clearScheduledAudio.
                                     },
                                     "transcription": {"model": "whisper-1"},
                                 },
@@ -117,8 +120,6 @@ async def websocket_relay(client_ws: WebSocket):
 
             async def handle_user_turn(user_text: str):
                 """Persist the turn, then decide whether the model may answer."""
-                nonlocal response_active
-
                 if not user_text:
                     return  # Noise or silence; stay quiet rather than replying.
 
@@ -144,7 +145,6 @@ async def websocket_relay(client_ws: WebSocket):
                             }
                         )
                     )
-                response_active = True
 
             async def upstream_loop():
                 try:
@@ -155,7 +155,7 @@ async def websocket_relay(client_ws: WebSocket):
                     print(f"Upstream closed: {e}")
 
             async def downstream_loop():
-                nonlocal current_assistant_transcript, response_active
+                nonlocal current_assistant_transcript
                 try:
                     while True:
                         message = await openai_ws.recv()
@@ -165,20 +165,6 @@ async def websocket_relay(client_ws: WebSocket):
                         # Surface OpenAI error events; they are otherwise silent
                         if etype == "error":
                             print(f"OpenAI ERROR event: {json.dumps(event)}")
-
-                        elif etype == "response.created":
-                            response_active = True
-
-                        elif etype == "input_audio_buffer.speech_started":
-                            # interrupt_response=False means OpenAI no longer
-                            # cancels on our behalf, so the relay owns the server
-                            # half of barge-in. The client stops its own queued
-                            # audio on this same event.
-                            if response_active:
-                                await openai_ws.send(
-                                    json.dumps({"type": "response.cancel"})
-                                )
-                                response_active = False
 
                         # 1. Log AI Transcript Deltas
                         elif etype == "response.output_audio_transcript.delta":
@@ -198,12 +184,9 @@ async def websocket_relay(client_ws: WebSocket):
                             # ungated rather than leaving the user in silence.
                             logger.warning("Input transcription failed; answering ungated")
                             await openai_ws.send(json.dumps({"type": "response.create"}))
-                            response_active = True
 
                         # 3. Save AI message and run any tool calls
                         elif etype == "response.done":
-                            response_active = False
-
                             if current_assistant_transcript:
                                 recent_turns.append(
                                     ("assistant", current_assistant_transcript)
@@ -249,7 +232,6 @@ async def websocket_relay(client_ws: WebSocket):
                                 await openai_ws.send(
                                     json.dumps({"type": "response.create"})
                                 )
-                                response_active = True
 
                         # Forward to frontend
                         try:
