@@ -1,12 +1,11 @@
 # Voice Agent
 
-A realtime voice agent being converted from a generalist assistant into a
-**domain-locked F1 race companion**. The browser streams audio to a FastAPI
-WebSocket relay, which proxies to the OpenAI Realtime API and owns tool
-execution, policy, and persistence.
+A realtime **domain-locked F1 voice race companion**. The browser streams audio
+to a FastAPI WebSocket relay, which proxies to the OpenAI Realtime API and owns
+tool execution, policy, and persistence.
 
-> The system prompt in `backend/app/config.py` still reads "helpful AI voice
-> assistant". That is what is being changed — not the intent of the project.
+The agent answers Formula 1 questions and refuses everything else. Scope is
+enforced in code rather than by prompting — see the turn lifecycle below.
 
 ## Architecture
 
@@ -15,8 +14,9 @@ Browser (React + Vite)
     │  WebSocket: PCM audio in, audio + events out
     ▼
 FastAPI relay  (backend/app/main.py)  ──WS──►  OpenAI Realtime (gpt-realtime)
-    ├─ tools     → Tavily search, Postgres history
-    └─ state     → Postgres (users, chat_messages)
+    ├─ gate   → guard.py   scope classifier; decides if a turn is answered
+    ├─ tools  → tools.py   f1_search (domain-locked), get_user_history
+    └─ state  → Postgres   users, chat_messages
 ```
 
 OpenAI Realtime is a single black box doing VAD, transcription, reasoning, and
@@ -36,9 +36,19 @@ speech synthesis. The relay's job is to be the **policy layer** around it.
 
 **Step 3 is the design's load-bearing idea.** By default
 `turn_detection.create_response` is `true`, so OpenAI jumps straight from 2 to 6
-and the backend never gets a say — which is why a system prompt is currently the
-only thing keeping the agent on topic. Setting it `false` inserts steps 3–5.
-Prompt-based refusal alone is explicitly **not** considered sufficient here.
+and the backend never gets a say — a system prompt would then be the only thing
+keeping the agent on topic. The session sets it `false`, which inserts steps
+3–5. Prompt-based refusal alone is explicitly **not** sufficient here.
+
+`interrupt_response` is `false` for the same reason, which means OpenAI no
+longer cancels in-flight responses on our behalf. The relay sends
+`response.cancel` itself on `input_audio_buffer.speech_started`, so barge-in is
+now owned on both sides: server cancels generation, client clears queued audio.
+
+The gate fails **open** (`guard.FAIL_OPEN`): if the classifier times out or
+errors, the turn is allowed through. A gate outage that refuses everything
+leaves the agent unusable, and the domain-locked search tool still blocks
+off-topic *retrieval* in that window.
 
 ## Commands
 
@@ -98,7 +108,6 @@ Tracked deliberately — don't fix these outside their branch:
 | Gap | Branch |
 |---|---|
 | `user_id` comes from a query param (`main.py:63`), so anyone can read anyone's history | `feat/session-auth` |
-| An unknown tool name leaves `result` unbound (`main.py:161`) | `feat/f1-domain-lock` (tool registry) |
 | README claims Redis session state and GPT scoring; neither exists | `chore/repo-hygiene` |
 | `print()` throughout instead of structured logging with per-session correlation IDs | `chore/repo-hygiene` |
 | `requirements.txt` is a raw `pip freeze` — ships Jupyter into the production image | `chore/repo-hygiene` |
