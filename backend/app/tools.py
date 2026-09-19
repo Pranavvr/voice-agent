@@ -15,6 +15,8 @@ from tavily import AsyncTavilyClient
 from app import crud
 from app.config import F1_DOMAINS
 from app.database import AsyncSessionLocal
+from app.rag import ingest as rag_ingest
+from app.rag import store as rag_store
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +65,41 @@ async def f1_search(query: str, recent: bool = False) -> str:
     return "\n\n".join(f"{r['title']}\n{r['content']}" for r in results)
 
 
+async def f1_knowledge(question: str) -> str:
+    """Retrieve passages from the FIA regulations.
+
+    Returns each passage with its citation, because in a corpus that was
+    reissued five times in seven months an uncited rule is not much better than
+    a guess -- the useful thing RAG adds here is not that the model "knows" the
+    rule but that it can say which issue it is reading.
+    """
+    if not rag_ingest.is_ready():
+        return (
+            "The regulations are still loading. Tell the user you cannot check "
+            "the rulebook yet and offer to search the web instead."
+        )
+
+    passages = await rag_store.search(question)
+    if not passages:
+        return (
+            f"Nothing in the regulations matched: {question}. Say you could not "
+            "find it in the rulebook rather than guessing."
+        )
+
+    formatted = "\n\n".join(
+        f"[{p['metadata'].get('citation', 'FIA regulations')}]\n{p['text']}"
+        for p in passages
+    )
+    return (
+        "Regulation passages follow. Quote the substance in plain speech and "
+        "name the document and article you used.\n\n" + formatted
+    )
+
+
 TOOL_REGISTRY = {
     "get_user_history": get_user_history,
     "f1_search": f1_search,
+    "f1_knowledge": f1_knowledge,
 }
 
 

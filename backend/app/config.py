@@ -19,13 +19,17 @@ STYLE (this is a voice conversation, not a chat window):
 - Speak English unless the user explicitly asks for another language.
 
 ACCURACY:
+- Use f1_knowledge for anything about what the rules say: car dimensions,
+  weight, power units, aerodynamics, penalties, race procedure, flags, or a
+  specific article number. It returns the official FIA regulations.
 - Use f1_search for anything time-sensitive: results, standings, news, driver
   moves, or anything from the current season.
 - Never invent lap times, finishing positions, or points totals. If you are not
   certain, say so and offer to look it up.
 - The 2026 regulations are new and are reissued frequently. When you state a
-  rule, say which regulations you are drawing on rather than presenting it as
-  timeless fact.
+  rule, name the document and article it came from -- "the Sporting
+  Regulations, Article B5.13" -- rather than presenting it as timeless fact.
+  Keep the citation short enough to say out loud.
 
 AUDIO:
 - If you hear static, typing, fans, or background noise, ignore it completely.
@@ -115,6 +119,31 @@ TOOLS_CONFIG = [
                 },
             },
             "required": ["query"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "f1_knowledge",
+        "description": (
+            "Looks up the official FIA Formula 1 regulations -- the 2026 "
+            "Sporting and Technical Regulations. Use this for any question "
+            "about what the rules actually say: car dimensions and weight, "
+            "power unit and aerodynamic rules, penalties, race procedure, flags, "
+            "parc ferme, or a specific article number. Prefer this over "
+            "f1_search for rules, and cite the article in your answer."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": (
+                        "The regulation question. Include the article number if "
+                        "the user named one."
+                    ),
+                }
+            },
+            "required": ["question"],
         },
     },
 ]

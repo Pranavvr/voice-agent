@@ -97,3 +97,70 @@ async def test_empty_results_tell_the_model_not_to_guess(monkeypatch):
     result = await tools.f1_search("something with no coverage")
     assert "No results" in result
     assert "guessing" in result
+
+
+# --- f1_knowledge ---------------------------------------------------------
+
+
+def _ready(monkeypatch, ready=True):
+    monkeypatch.setattr(tools.rag_ingest, "is_ready", lambda: ready)
+
+
+@pytest.mark.asyncio
+async def test_knowledge_says_so_while_the_corpus_is_loading(monkeypatch):
+    """Ingestion runs in the background at startup, so early questions can
+    arrive before the regulations exist."""
+    _ready(monkeypatch, False)
+
+    result = await tools.f1_knowledge("what is the minimum car weight?")
+    assert "still loading" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_knowledge_returns_passages_with_citations(monkeypatch):
+    _ready(monkeypatch)
+
+    async def _search(question, *args, **kwargs):
+        return [
+            {
+                "text": "The minimum mass of the car is 768kg.",
+                "metadata": {
+                    "citation": "2026 F1 Technical Regulations, Issue 8, Article 4.1"
+                },
+            }
+        ]
+
+    monkeypatch.setattr(tools.rag_store, "search", _search)
+
+    result = await tools.f1_knowledge("minimum car weight")
+    assert "768kg" in result
+    assert "Article 4.1" in result
+    assert "Issue 8" in result
+
+
+@pytest.mark.asyncio
+async def test_knowledge_without_matches_tells_the_model_not_to_guess(monkeypatch):
+    _ready(monkeypatch)
+
+    async def _search(question, *args, **kwargs):
+        return []
+
+    monkeypatch.setattr(tools.rag_store, "search", _search)
+
+    result = await tools.f1_knowledge("the offside rule")
+    assert "rather than guessing" in result
+
+
+@pytest.mark.asyncio
+async def test_knowledge_is_reachable_through_dispatch(monkeypatch):
+    _ready(monkeypatch)
+
+    async def _search(question, *args, **kwargs):
+        return [{"text": "Passage text.", "metadata": {"citation": "Doc, Article 1.1"}}]
+
+    monkeypatch.setattr(tools.rag_store, "search", _search)
+
+    result = await tools.dispatch(
+        "f1_knowledge", {"question": "what does article 1.1 say"}, user_id="u1"
+    )
+    assert "Passage text." in result

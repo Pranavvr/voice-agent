@@ -15,7 +15,9 @@ Browser (React + Vite)
     ▼
 FastAPI relay  (backend/app/main.py)  ──WS──►  OpenAI Realtime (gpt-realtime)
     ├─ gate   → guard.py   scope classifier; decides if a turn is answered
-    ├─ tools  → tools.py   f1_search (domain-locked), get_user_history
+    ├─ tools  → tools.py   f1_search (domain-locked), f1_knowledge (RAG),
+    │                      get_user_history
+    ├─ rag    → rag/       Chroma over the FIA regulations
     └─ state  → Postgres   users, chat_messages
 ```
 
@@ -53,6 +55,30 @@ errors, the turn is allowed through. A gate outage that refuses everything
 leaves the agent unusable, and the domain-locked search tool still blocks
 off-topic *retrieval* in that window.
 
+### RAG over the regulations
+
+`f1_knowledge` retrieves from the FIA 2026 Sporting and Technical Regulations
+(~1,650 chunks) held in an **embedded** Chroma index.
+
+- **Chunking follows the document's article structure**, not a fixed window. An
+  answer without "per Article 4.1" is close to useless in this domain, and a
+  chunk straddling two articles cannot be cited at all.
+- **Retrieval is hybrid, narrowly.** Embeddings cannot separate "Article 4.1"
+  from "Article 4.2", and regulations are mostly identifiers — so a query
+  naming an article also gets an exact metadata lookup, merged with the
+  semantic results.
+- **The index is rebuilt, not persisted.** A full rebuild is ~125k tokens, well
+  under a cent, which is cheaper than an EFS-backed Chroma service whose only
+  job would be surviving a teardown. Ingestion runs in the background at
+  startup so it cannot fail the ECS health check.
+- **Citations carry the issue number.** The Sporting Regulations reached Issue
+  05 within seven months, so an uncited rule is nearly worthless — the thing
+  RAG adds here is not that the model knows the rule but that it can say which
+  version it read.
+
+`RAG_AUTO_INGEST=false` disables startup ingestion; CI sets it so tests neither
+download PDFs nor spend embedding calls.
+
 ## Commands
 
 ```bash
@@ -69,7 +95,10 @@ cd frontend && npm run dev                           # :5173
 docker compose -f docker/docker-compose.yml up --build
 
 # Tests and lint (both run in CI)
-PYTHONPATH=backend pytest tests/
+RAG_AUTO_INGEST=false PYTHONPATH=backend pytest tests/
+
+# Build the regulation corpus by hand (needs OPENAI_API_KEY)
+PYTHONPATH=backend python -m app.rag.ingest [--force]
 ruff check .
 cd frontend && npm run lint
 
