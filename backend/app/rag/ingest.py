@@ -1,9 +1,10 @@
 """Fetch FIA regulation PDFs, chunk them, and load them into Chroma.
 
 Runs in the background on startup when the collection is empty, and can be
-invoked directly:
+invoked directly from backend/, so it writes the same index the server reads
+(CHROMA_PATH is relative to the working directory):
 
-    PYTHONPATH=backend python -m app.rag.ingest [--force]
+    cd backend && python -m app.rag.ingest [--force]
 
 Rebuilding on startup rather than persisting the index is a deliberate trade:
 the corpus is ~1,600 chunks and roughly 125k tokens, so a full rebuild costs
@@ -21,8 +22,10 @@ import asyncio
 import logging
 import os
 import tempfile
+from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 
 from app.rag import store
 from app.rag.extract import extract_chunks
@@ -30,6 +33,9 @@ from app.rag.extract import extract_chunks
 logger = logging.getLogger(__name__)
 
 DOWNLOAD_TIMEOUT_SECONDS = 180
+
+# The repo-root .env, resolved from this file rather than the working directory.
+ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 # Each entry is (doc_id, human title, source URL). Override via env to pick up
 # a newer issue without a code change.
@@ -145,6 +151,10 @@ def main() -> None:
         help="Re-ingest even if the collection is already populated",
     )
     args = parser.parse_args()
+
+    # The server loads .env in main.py; run directly, nothing else would, and
+    # the embedding client would start without OPENAI_API_KEY.
+    load_dotenv(ENV_FILE)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     asyncio.run(ingest_all(force=args.force))

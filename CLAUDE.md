@@ -97,8 +97,9 @@ docker compose -f docker/docker-compose.yml up --build
 # Tests and lint (both run in CI)
 RAG_AUTO_INGEST=false PYTHONPATH=backend pytest tests/
 
-# Build the regulation corpus by hand (needs OPENAI_API_KEY)
-PYTHONPATH=backend python -m app.rag.ingest [--force]
+# Build the regulation corpus by hand (reads OPENAI_API_KEY from .env).
+# Run from backend/ so it writes the index the server reads.
+cd backend && python -m app.rag.ingest [--force]
 ruff check .
 cd frontend && npm run lint
 
