@@ -35,6 +35,9 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PYTHONPATH: ${{ github.workspace }}/backend
+          # Startup ingestion downloads the FIA PDFs and spends real embedding
+          # calls; neither belongs in a unit test run.
+          RAG_AUTO_INGEST: "false"
         run: pytest tests/
 
       - name: Build Backend Docker image

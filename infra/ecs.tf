@@ -80,6 +80,11 @@ resource "aws_ecs_service" "backend" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  # On boot the task downloads the FIA regulation PDFs and embeds ~1,600 chunks
+  # into Chroma. /health returns 200 throughout, so this is defence in depth
+  # against the ALB failing the task while ingestion is competing for CPU.
+  health_check_grace_period_seconds = 180
+
   network_configuration {
     subnets          = aws_subnet.public[*].id
     security_groups  = [aws_security_group.backend.id]

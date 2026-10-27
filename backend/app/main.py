@@ -13,6 +13,8 @@ from app import crud, tools
 from app.config import REFUSAL_INSTRUCTIONS, SYSTEM_PROMPT, TOOLS_CONFIG
 from app.database import AsyncSessionLocal, Base, engine
 from app.guard import is_in_scope
+from app.rag import ingest as rag_ingest
+from app.rag import store as rag_store
 
 load_dotenv(dotenv_path="../.env")  # Load the .env from the root folder
 
@@ -30,7 +32,17 @@ CONTEXT_WINDOW = 8
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Build the regulation corpus in the background. Doing it inline would hold
+    # startup for a minute or two while ~1,600 chunks are embedded, which is
+    # long enough for the ECS health check to kill the task. /health reports
+    # corpus readiness separately, and f1_knowledge says so if asked early.
+    ingestion = asyncio.create_task(rag_ingest.ingest_in_background())
+
     yield
+
+    ingestion.cancel()
+    await asyncio.gather(ingestion, return_exceptions=True)
     await engine.dispose()
 
 
@@ -39,7 +51,13 @@ app = FastAPI(title="F1 Voice Agent Backend", lifespan=lifespan)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    """Liveness. Always ok once serving; corpus state is reported separately so
+    a slow ingestion does not fail the ECS health check."""
+    return {
+        "status": "ok",
+        "regulations_loaded": rag_ingest.is_ready(),
+        "regulation_chunks": rag_store.count(),
+    }
 
 
 # --- THE WEBSOCKET RELAY ---

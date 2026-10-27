@@ -58,3 +58,7 @@ override.tf.json
 
 # Claude Code (local overrides only; .claude/settings.json is shared)
 .claude/settings.local.json
+
+# Chroma vector index (rebuilt from source PDFs on startup)
+chroma_index/
+backend/chroma_index/
