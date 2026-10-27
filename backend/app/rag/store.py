@@ -94,11 +94,18 @@ async def add_chunks(chunks: list[Chunk]) -> int:
     if not chunks:
         return 0
 
+    # Chroma rejects a batch with repeated IDs, but only at upsert -- after
+    # every embedding has been paid for. Fail before spending anything.
+    ids = [c.chunk_id for c in chunks]
+    if len(set(ids)) != len(ids):
+        duplicates = sorted({i for i in ids if ids.count(i) > 1})
+        raise ValueError(f"{len(duplicates)} duplicate chunk IDs, e.g. {duplicates[:5]}")
+
     embeddings = await embed_texts([c.embed_text for c in chunks])
     collection = get_collection()
 
     collection.upsert(
-        ids=[c.chunk_id for c in chunks],
+        ids=ids,
         embeddings=embeddings,
         documents=[c.text for c in chunks],
         metadatas=[
@@ -107,6 +114,7 @@ async def add_chunks(chunks: list[Chunk]) -> int:
                 "doc_title": c.doc_title,
                 "issue": c.issue,
                 "article": c.article,
+                "appendix": c.appendix,
                 "title": c.title,
                 "page": c.page,
                 "citation": c.citation,
@@ -141,7 +149,9 @@ def _exact_article_matches(query: str, limit: int) -> list[dict]:
 
     try:
         result = get_collection().get(
-            where={"article": {"$in": sorted(references)}},
+            # Main-body articles only: "Article 4.5" must not also return
+            # Appendix 1's unrelated 4.5.
+            where={"$and": [{"article": {"$in": sorted(references)}}, {"appendix": ""}]},
             limit=limit,
         )
     except Exception:

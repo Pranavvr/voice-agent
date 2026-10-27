@@ -36,6 +36,9 @@ HEADING_RE = re.compile(r"^((?:ARTICLE|APPENDIX)\s+[A-Z]?\d+[A-Z]?)\s*:\s*(.*)$"
 # A table-of-contents entry ends with the page number it points at.
 TOC_TAIL_RE = re.compile(r"\s\d{1,3}$")
 ISSUE_RE = re.compile(r"Issue\s+(\d+)", re.I)
+# A line ending mid-reference ("...as defined in Article", "Articles 3.5,"):
+# a number opening the next line continues the sentence, not a new article.
+CROSS_REF_TAIL_RE = re.compile(r"(?:\b(?:articles?|appendix|and|or|to)|,|\()\s*$", re.I)
 
 # Long articles are split further so a single chunk stays embeddable.
 MAX_CHUNK_CHARS = 1500
@@ -72,10 +75,24 @@ class Chunk:
     page: int
     part: int = 1
     total_parts: int = 1
+    # Appendices restart their numbering, so "1.3" in Appendix 1 is not Article
+    # 1.3. Empty for the main body.
+    appendix: str = ""
+    # The FIA's own documents occasionally repeat an article number (Sporting
+    # Issue 05 has B1.1.1-B1.1.3 twice in a row). Both are kept; the second is
+    # occurrence 2, so the two remain distinct chunks.
+    occurrence: int = 1
+
+    @property
+    def reference(self) -> str:
+        """The article as cited: "Article 4.1" or "Appendix 1, Article 1.3"."""
+        if self.appendix:
+            return f"Appendix {self.appendix}, Article {self.article}"
+        return f"Article {self.article}"
 
     @property
     def citation(self) -> str:
-        base = f"{self.doc_title}, Issue {self.issue}, Article {self.article}"
+        base = f"{self.doc_title}, Issue {self.issue}, {self.reference}"
         if self.total_parts > 1:
             return f"{base} (part {self.part} of {self.total_parts})"
         return base
@@ -89,12 +106,15 @@ class Chunk:
         section ("insurance requirements") matches even when the body text
         never repeats the heading.
         """
-        header = f"{self.article} {self.title}".strip()
+        prefix = f"Appendix {self.appendix} " if self.appendix else ""
+        header = f"{prefix}{self.article} {self.title}".strip()
         return f"{header}\n{self.text}" if header else self.text
 
     @property
     def chunk_id(self) -> str:
-        return f"{self.doc_id}:{self.article}:{self.part}"
+        scope = f"appendix-{self.appendix}/" if self.appendix else ""
+        repeat = f"~{self.occurrence}" if self.occurrence > 1 else ""
+        return f"{self.doc_id}:{scope}{self.article}{repeat}:{self.part}"
 
 
 def _clean(text: str) -> str:
@@ -140,11 +160,19 @@ def _find_boilerplate(pages: list[list[str]], threshold: float = 0.5) -> set[str
 
 
 def _is_toc_page(lines: list[str]) -> bool:
-    """True when every article-like line on the page points at a page number."""
+    """True when the page's entries point at page numbers.
+
+    Contents pages come in two shapes: every article line ends in a page number
+    (sporting), or only the ARTICLE/APPENDIX headings do and the articles listed
+    beneath them carry none (technical). A real page rarely holds two headings,
+    let alone two that both end in a number.
+    """
     article_lines = [line for line in lines if ARTICLE_RE.match(line)]
-    if len(article_lines) < 3:
-        return False
-    return all(TOC_TAIL_RE.search(line) for line in article_lines)
+    if len(article_lines) >= 3 and all(TOC_TAIL_RE.search(line) for line in article_lines):
+        return True
+
+    heading_lines = [line for line in lines if HEADING_RE.match(line)]
+    return len(heading_lines) >= 2 and all(TOC_TAIL_RE.search(line) for line in heading_lines)
 
 
 def _split_long(text: str) -> list[str]:
@@ -184,6 +212,7 @@ class _Section:
     title: str
     page: int
     lines: list[str] = field(default_factory=list)
+    appendix: str = ""
 
     @property
     def body(self) -> str:
@@ -228,6 +257,9 @@ def parse_pages(
     current: _Section | None = None
     # The most recent bare heading, carried onto following articles as context.
     current_title = ""
+    # Set while inside an appendix, whose article numbers restart from 1.
+    current_appendix = ""
+    previous_line = ""
 
     for page_number, lines in enumerate(pages, start=1):
         body = [
@@ -240,11 +272,17 @@ def parse_pages(
             continue
 
         for line in body:
+            # Read before updating, so every branch below sees the line before.
+            wraps_reference = bool(CROSS_REF_TAIL_RE.search(previous_line.rstrip()))
+            previous_line = line
+
             heading = HEADING_RE.match(line)
             if heading:
                 if current:
                     sections.append(current)
                 current_title = heading.group(2).strip() or heading.group(1)
+                kind, _, number = heading.group(1).partition(" ")
+                current_appendix = number.strip().upper() if kind.upper() == "APPENDIX" else ""
                 # Becomes the active section so the prose that follows the
                 # heading is captured, rather than dropped for want of an
                 # enclosing article.
@@ -257,7 +295,7 @@ def parse_pages(
                 continue
 
             article = ARTICLE_RE.match(line)
-            if article:
+            if article and not wraps_reference:
                 if current:
                     sections.append(current)
                 remainder = article.group(2).strip()
@@ -266,6 +304,7 @@ def parse_pages(
                     title=current_title,
                     page=page_number,
                     lines=[remainder] if remainder else [],
+                    appendix=current_appendix,
                 )
                 continue
 
@@ -276,6 +315,7 @@ def parse_pages(
         sections.append(current)
 
     chunks: list[Chunk] = []
+    seen: Counter[tuple[str, str]] = Counter()
     for section in sections:
         body = section.body
         if len(body) < MIN_CHUNK_CHARS:
@@ -284,6 +324,7 @@ def parse_pages(
                 current_title = body
             continue
 
+        seen[(section.appendix, section.article)] += 1
         parts = _split_long(body)
         for index, part in enumerate(parts, start=1):
             chunks.append(
@@ -297,6 +338,8 @@ def parse_pages(
                     page=section.page,
                     part=index,
                     total_parts=len(parts),
+                    appendix=section.appendix,
+                    occurrence=seen[(section.appendix, section.article)],
                 )
             )
 

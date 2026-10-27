@@ -24,7 +24,7 @@ async def _fake_embed(texts: list[str]) -> list[list[float]]:
     return [_vector(t) for t in texts]
 
 
-def _chunk(article: str, text: str, doc_id: str = "sporting") -> Chunk:
+def _chunk(article: str, text: str, doc_id: str = "sporting", appendix: str = "") -> Chunk:
     return Chunk(
         doc_id=doc_id,
         doc_title="2026 F1 Sporting Regulations",
@@ -33,6 +33,7 @@ def _chunk(article: str, text: str, doc_id: str = "sporting") -> Chunk:
         title="Section",
         text=text,
         page=1,
+        appendix=appendix,
     )
 
 
@@ -56,6 +57,39 @@ async def test_chunks_round_trip_with_their_citation(chroma):
     citation = results[0]["metadata"]["citation"]
     assert "Issue 5" in citation
     assert "B5.13.4" in citation
+
+
+@pytest.mark.asyncio
+async def test_duplicate_ids_are_rejected_before_anything_is_embedded(chroma, monkeypatch):
+    """Chroma only rejects duplicates at upsert, after every embedding call has
+    been paid for. The first real ingestion run did exactly that."""
+    calls = []
+
+    async def _counting_embed(texts):
+        calls.append(texts)
+        return await _fake_embed(texts)
+
+    monkeypatch.setattr(store, "embed_texts", _counting_embed)
+
+    with pytest.raises(ValueError, match="duplicate chunk IDs"):
+        await store.add_chunks([_chunk("B1.1.1", "a" * 60), _chunk("B1.1.1", "b" * 60)])
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_exact_lookup_ignores_appendix_articles_sharing_the_number(chroma):
+    """"Article 4.5" means the main body's 4.5, not Appendix 1's unrelated 4.5."""
+    await store.add_chunks(
+        [
+            _chunk("4.5", "Adding mass during the race is prohibited."),
+            _chunk("4.5", "A section through Y=0 with these vertices.", appendix="1"),
+        ]
+    )
+
+    rows = store._exact_article_matches("what does article 4.5 say", limit=5)
+
+    assert [r["metadata"]["appendix"] for r in rows] == [""]
 
 
 @pytest.mark.asyncio
